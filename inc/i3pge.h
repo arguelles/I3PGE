@@ -33,15 +33,20 @@ namespace I3PGE {
 
 double KernelHelper(double *, size_t, void *);
 
-
 class IceCubeEstimator {
     public:
       enum Sampling { Asimov, Poisson, Gaussian };
     private:
+      /// neutrino
+      const unsigned int neutrino = 0;
+      /// neutrino
+      const unsigned int antineutrino = 1;
+      /// neutrino type auxiliary variable
+      unsigned int NEUTYPE;
       /// SQuIDS units module
       squids::Const units;
       /// Cross section calculator
-      std::shared_ptr<CrossSection> XS;
+      std::shared_ptr<I3PGECrossSection> XS;
       /// Effective area calculator
       std::shared_ptr<MuonEffectiveAreaSpline> EA;
       /// Muon Energy Loss
@@ -58,6 +63,8 @@ class IceCubeEstimator {
       double flux_units;
       /// energy resolution
       double sigmaE;
+      /// target nucleon density
+      double NT;
       /// helper gaussian function for resolution integration
       double Normal(double Er, double Et){
           sigmaE = Et;
@@ -77,24 +84,28 @@ class IceCubeEstimator {
       */
     public:
       /// Basic constructor
-      IceCubeEstimator(std::shared_ptr<MuonEnergyLossSpline> MELS,std::shared_ptr<MuonEffectiveAreaSpline> EA, std::shared_ptr<CrossSection> XS,
+      IceCubeEstimator(std::shared_ptr<MuonEnergyLossSpline> MELS,std::shared_ptr<MuonEffectiveAreaSpline> EA, std::shared_ptr<I3PGECrossSection> XS,
                        double T_IC,double f_sys = 0.):
       MELS(MELS),EA(EA),XS(XS),T_IC(T_IC),f_sys(f_sys)
       {
           Omega = 2.0*M_PI;
+          NT = 1.0;
           flux_units = pow(units.GeV,-1.)*pow(units.cm,-2.)*pow(units.sec,-1.);
       }
 
       /// Basic Function used to calculate event spectation
-      nusquids::marray<double,2>  DoIt(nusquids::marray<double,2> zenith_energy_bins,std::shared_ptr<Flux> FLUX,Sampling mode,
+      nusquids::marray<double,2>  DoIt(std::pair<std::vector<double>,std::vector<double>> zenith_energy_bins,std::shared_ptr<Flux> FLUX,Sampling mode,
                                        double N0 = double(1.0), double dgamma = double(0.0)) {
-          nusquids::marray<double,2> ResultTable{zenith_energy_bins.extent(0)-1,zenith_energy_bins.extent(1)-1};
+          nusquids::marray<double,2> ResultTable{zenith_energy_bins.first.size()-1,zenith_energy_bins.second.size()-1};
 
-          for(unsigned int ci = 0; ci < zenith_energy_bins.extent(0)-1; ci++){
-              for(unsigned int ei = 0; ei < zenith_energy_bins.extent(1)-1; ei++){
-                  double costh_edge = cth_range[ci];
-                  double Er_edge = exp(loge_range[ei]);
+          for(unsigned int ci = 0; ci < ResultTable.extent(0)-1; ci++){
+              for(unsigned int ei = 0; ei < ResultTable.extent(1)-1; ei++){
+                  double costh_edge = zenith_energy_bins.first[ci];
+                  double energy_edge = zenith_energy_bins.second[ei];
                   double event_num,event_num_error;
+
+                  double DeltaCT = (zenith_energy_bins.first[ci+1] - zenith_energy_bins.first[ci]);
+                  double DeltaE = (zenith_energy_bins.second[ei+1] - zenith_energy_bins.second[ei]);
 
                   #ifdef _NAIVE_INTEGRATOR_
                   // aqui viene la integracion =MAGIA=
@@ -107,30 +118,43 @@ class IceCubeEstimator {
                   event_num = 0.0;
                   for(unsigned int ir = 0; ir < _NUM_RANDOM_INT_; ir++){
 
-                      double Er = Er_edge + DeltaE[ei]*gsl_rng_uniform(r);
-                      double Enu = Er_edge + 3.0 * DeltaE[ei] * (gsl_rng_uniform (r) - 0.5);
-                      double costh = costh_edge + DeltaCosTh[ci]*gsl_rng_uniform (r);
+                      double Er = Er_edge + DeltaE * gsl_rng_uniform(r);
+                      double Enu = Er_edge + 3.0 * DeltaE * (gsl_rng_uniform (r) - 0.5);
+                      double costh = costh_edge + DeltaCT*gsl_rng_uniform (r);
 
-                      event_num += Aeff(costh,Enu,0)*ANS->Evaluate(costh,Enu,1,0)*Gaussian(Er,Enu);
-                      event_num += Aeff(costh,Enu,1)*ANS->Evaluate(costh,Enu,1,1)*Gaussian(Er,Enu);
+                      event_num += Kernel(0,costh,enu,
+                                    muon_initial_energy,muon_final_energy,
+                                    muon_length);
+                      event_num += Kernel(1,costh,enu,
+                                    muon_initial_energy,muon_final_energy,
+                                    muon_length);
 
                   }
 
                   gsl_rng_free(r);
 
                   // normalizamos
-                  double DeltaEr = DeltaE[ei];
-                  double DeltaEE = DeltaE[ei];
-                  event_num = event_num*T_IC*Omega*DeltaEr*DeltaEE*DeltaCosTh[ci]*flux_units/_NUM_RANDOM_INT_;
+                  double DeltaEr = DeltaE;
+                  double DeltaEE = DeltaE;
+                  event_num = event_num*T_IC*Omega*DeltaEr*DeltaEE*DeltaCT*flux_units/_NUM_RANDOM_INT_;
                   #endif
 
                   #ifdef _VEGAS_INTEGRATOR_
-                  //double xl[3] = { costh_edge, Er_edge/pc->GeV, 0.0};
-                  //double xu[3] = { costh_edge + DeltaCosTh[ci], (Er_edge + DeltaE[ei])/pc->GeV, 1.0};
-                  //double xl[3] = { costh_edge, Er_edge/pc->GeV, (Er_edge/pc->GeV)/10.0};
-                  //double xu[3] = { costh_edge + DeltaCosTh[ci], (Er_edge + DeltaE[ei])/pc->GeV, ((Er_edge + DeltaE[ei])/pc->GeV)*10.0};
-                  double xl[3] = { costh_edge, Er_edge/pc->GeV, ((Er_edge - DeltaE[ei])/pc->GeV)};
-                  double xu[3] = { costh_edge + DeltaCosTh[ci], (Er_edge + DeltaE[ei])/pc->GeV, ((Er_edge + DeltaE[ei])/pc->GeV)};
+                  double xl[5] = {
+                                   costh_edge,
+                                   log10(energy_edge - 3*DeltaE),
+                                   log10(energy_edge - 3*DeltaE),
+                                   log10(energy_edge - DeltaE),
+                                   0.
+                                 };
+
+                  double xu[5] = {
+                                   costh_edge + DeltaCT,
+                                   log10(energy_edge + 3*DeltaE),
+                                   log10(energy_edge + 3*DeltaE),
+                                   log10(energy_edge + DeltaE),
+                                   2.0*units.km
+                                 };
 
                   const gsl_rng_type *T;
                   gsl_rng *r;
@@ -163,7 +187,7 @@ class IceCubeEstimator {
                   #endif
 
                   double Emean_GeV = 1827.03*units.GeV;
-                  ResultTable[ci][ei] = N0*event_num*pow(Er_edge/Emean_GeV,dgamma);
+                  ResultTable[ci][ei] = N0*event_num*pow(energy_edge/Emean_GeV,dgamma);
               }
           }
 
@@ -187,10 +211,10 @@ class IceCubeEstimator {
                   RealizationTable[i][j] = 0.0;
                 else {
                   if (mode == Poisson) // poisson sampling
-                    RealizationTable[i][j] = static_cast<double>(gsl_ran_poisson(r,ResultsTable[i][j]));
+                    RealizationTable[i][j] = static_cast<double>(gsl_ran_poisson(r,ResultTable[i][j]));
                   else if (mode == Gaussian){ // gaussian sampling
-                    double sigma = sqrt(ResultsTable[i][j]) + f_sys*ResultsTable[i][j];
-                    RealizationTable[i][j] = ResultsTable[i][j] + static_cast<double>(gsl_ran_gaussian(r,sigma));
+                    double sigma = sqrt(ResultTable[i][j]) + f_sys*ResultTable[i][j];
+                    RealizationTable[i][j] = ResultTable[i][j] + static_cast<double>(gsl_ran_gaussian(r,sigma));
                   }
                 }
               }
@@ -214,24 +238,24 @@ class IceCubeEstimator {
         FLUX = FLUX_;
       }
 
+      void Set_Neutype(unsigned int neutype){
+        NEUTYPE = neutype;
+      }
     protected:
-      double Kernel(double costh, double enu,
+      double Kernel(unsigned int neutype, double costh, double enu,
                     double muon_initial_energy, double muon_final_energy,
                     double muon_length){
-        return T_IC*(*FLUX)(costh,enu)*(*XS)(enu,muon_initial_energy)*NT*(*MELS)(muon_initial_energy,muon_final_energy,muon_length)*(*EA)(muon_final_energy);
+        return T_IC*(*FLUX)(neutype,costh,enu)*(*XS)(neutype,enu,muon_initial_energy)*NT*(*MELS)(muon_initial_energy,muon_final_energy,muon_length)*(*EA)(muon_final_energy);
       }
-
+    public:
       double Kernel(double *x){
           double costh = x[0];
-          double Er = x[1]*pc->GeV;
-          double Enu = x[2]*pc->GeV;
+          double enu = pow(10.0,x[1]);
+          double muon_initial_energy = pow(10.0,x[2]);
+          double muon_final_energy = pow(10.0,x[3]);
+          double muon_length = x[4];
 
-          if (Enu > exp(loge_range[e_size-1]) or Enu < exp(loge_range[0]))
-              return 0.0;
-          else	{
-              return SQR(units.GeV)*(Aeff(costh,Enu,0)*ANS->Evaluate(costh,Enu,1,0)*Gaussian(Er,Enu)+
-              Aeff(costh,Enu,1)*ANS->Evaluate(costh,Enu,1,1)*Gaussian(Er,Enu))*T_IC*Omega*flux_units;
-          }
+          return Kernel(NEUTYPE,costh,enu,muon_initial_energy,muon_final_energy,muon_length);
       }
 };
 

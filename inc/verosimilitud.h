@@ -8,67 +8,67 @@
 #include "autodiff.h"
 
 class Prior {
-    public:
-        string name;
-        bool fix;
-        Prior(){};
+  public:
+    std::string name;
+    bool fix;
+    Prior(){};
 
-        virtual double evaluate(double);
-        virtual FD<Dynamic, double> evaluate(FD<Dynamic, double>);
+    virtual double evaluate(double);
+    virtual FD<Dynamic, double> evaluate(FD<Dynamic, double>);
 
-        void FixParameter(void){
-            fix = true;
-        };
+    void FixParameter(void){
+        fix = true;
+    };
 
-        //~Prior(){};
+      //~Prior(){};
 };
 
 class GaussianPrior : public Prior {
-    private:
-        double mean;
-        double stddev;
-        double norm;
-    public:
-        GaussianPrior(double mean, double stddev):
-        mean(mean),stddev(stddev),
-        norm(1.0/(sqrt(2.0*M_PI)*stddev))
-        {
-            name = "GaussianPrior";
-        };
+  private:
+    double mean;
+    double stddev;
+    double norm;
+  public:
+    GaussianPrior(double mean, double stddev):
+    mean(mean),stddev(stddev),
+    norm(1.0/(sqrt(2.0*M_PI)*stddev))
+    {
+        name = "GaussianPrior";
+    };
 
-        double evaluate(double x){
-            double z = (x - mean)/stddev;
-            return norm*exp(-z*z/2.0);
-        };
+    double evaluate(double x){
+        double z = (x - mean)/stddev;
+        return norm*exp(-z*z/2.0);
+    };
 
-        FD<Dynamic, double> evaluate(FD<Dynamic, double> x){
-            FD<Dynamic, double> z = (x - mean)/stddev;
-            return norm*exp(-z*z/2.0);
-        };
+    FD<Dynamic, double> evaluate(FD<Dynamic, double> x){
+        FD<Dynamic, double> z = (x - mean)/stddev;
+        return norm*exp(-z*z/2.0);
+    };
 };
 
 class UniformPrior : public Prior {
-    private:
-        double min;
-        double max;
-    public:
-        UniformPrior(double min, double max):
-        min(min),max(max)
-        {
-            name = "UniformPrior";
-        };
+  private:
+    double min;
+    double max;
+  public:
+    UniformPrior(double min, double max):
+    min(min),max(max)
+    {
+        name = "UniformPrior";
+    };
 
-        double evaluate(double x){
-            if (x < min || x > max)
-                return double(0.0);
-            return double(1.0);
-        };
+    double evaluate(double x){
+        if (x < min || x > max)
+            return double(0.0);
+        return double(1.0);
+    };
 
-        FD<Dynamic, double> evaluate(FD<Dynamic, double> x){
-            if (x < min || x > max)
-                return FD<Dynamic, double>(0.0);
-            return FD<Dynamic, double>(1.0);
-        };
+    FD<Dynamic, double> evaluate(FD<Dynamic, double> x){
+        if (x < min || x > max)
+            return FD<Dynamic, double>(0.0);
+        return FD<Dynamic, double>(1.0);
+    };
 };
 
 template<typename DataType>
@@ -184,15 +184,15 @@ class Verosimilitud{
                 return EvaluateChi2(params);
             else
                 return DataType(0.0);
-                std::cout << "VEROSILIMITUD MODE ERROR" << endl;
+                std::cout << "VEROSILIMITUD MODE ERROR" << std::endl;
                 exit(0);
         };
 
-        void UpdateSimulation(vector<DataType> sim){
+        void UpdateSimulation(std::vector<DataType> sim){
             SimulationVector = sim;
         };
 
-        void UpdateObservation(vector<double> obs){
+        void UpdateObservation(std::vector<double> obs){
             ObservationVector = obs;
         };
 

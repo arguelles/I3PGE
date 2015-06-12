@@ -40,7 +40,7 @@ void ChangeParameters(AtmNeutrinoState* ANS,std::vector<DataType> params){
     double N0 = params[0];
     double dgamma = params[1];
 
-    vector<NeutrinoState> NST = ANS->GetState();
+    std::vector<NeutrinoState> NST = ANS->GetState();
 
     // mean energy for atmospheric in 1e2 to 1e6 range
     double Emean_GeV = 1827.03;

@@ -2,7 +2,7 @@
 
 namespace I3PGE {
 
-double CrossSectionFromSpline::DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const {
+double I3PGE::DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const {
   int centerbuffer[3];
   double xx[3];
 
@@ -35,7 +35,7 @@ double CrossSectionFromSpline::DoubleDifferentialCrossSection(int neutype, doubl
   }
 }
 
-CrossSectionFromSpline::CrossSectionFromSpline(std::string splinepath, std::string model_name):
+I3PGECrossSection::CrossSectionFromSpline(std::string splinepath, std::string model_name):
   numu_dsdxdy(new splinetable,[](splinetable* t){ splinetable_free(t); delete t;}),
   numubar_dsdxdy(new splinetable,[](splinetable* t){ splinetable_free(t); delete t;})
 {

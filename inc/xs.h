@@ -8,22 +8,16 @@
 
 namespace I3PGE {
 
-struct CrossSection {
-  using result_type = double;
-  public:
-    virtual result_type DoubleDifferentialCrossSection(int, double,double,double) const = 0;
-    template<typename... ArgTypes>
-    double operator()(ArgTypes&&... args){ return DoubleDifferentialCrossSection(std::forward<ArgTypes>(args)...);};
-};
-
-struct CrossSectionFromSpline: public CrossSection {
+struct I3PGECrossSection: public nusquids::NeutrinoDISCrossSectionsFromTables {
   private:
     // photospline objects
     std::shared_ptr<splinetable> numu_dsdxdy;
     std::shared_ptr<splinetable> numubar_dsdxdy;
-    double DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const override;
   public:
-    CrossSectionFromSpline(std::string splinepath, std::string model_name = "");
+    I3PGECrossSection(std::string splinepath, std::string model_name = "");
+    double DoubleDifferentialCrossSection(double E, double x, double y, NeutrinoFlavor flavor, NeutrinoType neutype, Current current) const override;
+    template<typename... ArgTypes>
+    double operator()(ArgTypes&&... args){ return SingleDifferentialCrossSection(std::forward<ArgTypes>(args)...);};
 };
 
 } // close I3PGE namespace
