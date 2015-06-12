@@ -12,10 +12,8 @@ struct CrossSection {
   using result_type = double;
   public:
     virtual result_type DoubleDifferentialCrossSection(int, double,double,double) const = 0;
-    template<typename Event>
-    double operator()(const Event& e) const {
-      return DoubleDifferentialCrossSection((int)e.primaryType,e.injectedEnergy,e.intX,e.intY);
-    };
+    template<typename... ArgTypes>
+    double operator()(ArgTypes&&... args){ return DoubleDifferentialCrossSection(std::forward<ArgTypes>(args)...);};
 };
 
 struct CrossSectionFromSpline: public CrossSection {
@@ -23,7 +21,7 @@ struct CrossSectionFromSpline: public CrossSection {
     // photospline objects
     std::shared_ptr<splinetable> numu_dsdxdy;
     std::shared_ptr<splinetable> numubar_dsdxdy;
-    double DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const;
+    double DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const override;
   public:
     CrossSectionFromSpline(std::string splinepath, std::string model_name = "");
 };

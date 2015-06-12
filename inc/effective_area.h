@@ -21,6 +21,8 @@ struct MuonEffectiveAreaSpline {
     std::shared_ptr<splinetable> effective_area_spline;
     double Evaluate(double costh,double muon_energy) const;
   public:
+    template<typename... ArgTypes>
+    double operator()(ArgTypes&&... args){ return Evaluate(std::forward<ArgTypes>(args)...);};
     MuonEffectiveAreaSpline(std::string splinepath);
 };
 
@@ -30,12 +32,14 @@ struct NeutrinoEffectiveAreaTable {
     nusquids::marray<double,2> AeffTable;
     std::vector<double> cth_range;
     std::vector<double> loge_range;
+    double Evaluate(double costh, double energy,unsigned int neutype) const;
   protected:
     double LinInter(double x,double xM, double xP, double yM, double yP) const {
       return yM + (yP-yM)*(x-xM)/(xP-xM);
     }
   public:
-    double Evaluate(double costh, double energy,unsigned int neutype) const;
+    template<typename... ArgTypes>
+    double operator()(ArgTypes&&... args){ return Evaluate(std::forward<ArgTypes>(args)...);};
     NeutrinoEffectiveAreaTable(std::string tablepath,unsigned int, unsigned int);
 };
 
