@@ -1,19 +1,24 @@
-#include "lepton_weighter.h"
+#include "xs.h"
 
 namespace I3PGE {
 
-double I3PGE::DoubleDifferentialCrossSection(int neutype, double nuEnergy,double x, double y) const {
+double I3PGECrossSection::DoubleDifferentialCrossSection(double E, double x, double y,
+    nusquids::NeutrinoCrossSections::NeutrinoFlavor flavor,
+    nusquids::NeutrinoCrossSections::NeutrinoType neutype,
+    nusquids::NeutrinoCrossSections::Current current) const {
+
+  if (current != nusquids::NeutrinoCrossSections::Current::CC or
+      flavor != nusquids::NeutrinoCrossSections::muon)
+    throw std::runtime_error("CrossSection::DoubleDifferentialCrossSection: only nu_mu CC cross section spline exist");
+
   int centerbuffer[3];
   double xx[3];
 
-  //int target = 2; // target = isospin
-  //int cc = 1; // interaction = charge current
-
-  xx[0] = log10(nuEnergy);
+  xx[0] = log10(E);
   xx[1] = log10(x);
   xx[2] = log10(y);
 
-  if (neutype == (int) particleType::MuMinus or neutype == (int) particleType::NuMu){
+  if (neutype == nusquids::NeutrinoCrossSections::NeutrinoType::neutrino){
     //int flavor = 3;// muon neutrino
     //return dsdxdy_(&nuEnergy,&x,&y,&flavor,&target,&cc);///sigma;
     if(tablesearchcenters(numu_dsdxdy.get(),xx,centerbuffer) == 0)
@@ -21,7 +26,7 @@ double I3PGE::DoubleDifferentialCrossSection(int neutype, double nuEnergy,double
     else
       return 0.0;
   }
-  else if (neutype == (int) particleType::MuPlus or neutype == (int) particleType::NuMuBar){
+  else if (neutype == nusquids::NeutrinoCrossSections::NeutrinoType::antineutrino){
     //int flavor = 4;// muon antineutrino
     //return dsdxdy_(&nuEnergy,&x,&y,&flavor,&target,&cc);///sigma;
     if(tablesearchcenters(numubar_dsdxdy.get(),xx,centerbuffer) == 0)
@@ -30,12 +35,11 @@ double I3PGE::DoubleDifferentialCrossSection(int neutype, double nuEnergy,double
       return 0.0;
   }
   else {
-    std::cerr << "CrossSection:CalDDXSPhotoSpline : Bad particle "  << neutype << std::endl;
-    exit(1);
+    throw std::runtime_error("CrossSection::DoubleDifferentialCrossSection: unexpected neutype.");
   }
 }
 
-I3PGECrossSection::CrossSectionFromSpline(std::string splinepath, std::string model_name):
+I3PGECrossSection::I3PGECrossSection(std::string splinepath, std::string model_name):
   numu_dsdxdy(new splinetable,[](splinetable* t){ splinetable_free(t); delete t;}),
   numubar_dsdxdy(new splinetable,[](splinetable* t){ splinetable_free(t); delete t;})
 {

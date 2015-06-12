@@ -5,6 +5,7 @@
 #include <memory>
 #include <photospline/splinetable.h>
 #include <photospline/bspline.h>
+#include <nuSQuIDS/xsections.h>
 
 namespace I3PGE {
 
@@ -17,7 +18,7 @@ struct I3PGECrossSection: public nusquids::NeutrinoDISCrossSectionsFromTables {
     I3PGECrossSection(std::string splinepath, std::string model_name = "");
     double DoubleDifferentialCrossSection(double E, double x, double y, NeutrinoFlavor flavor, NeutrinoType neutype, Current current) const override;
     template<typename... ArgTypes>
-    double operator()(ArgTypes&&... args){ return SingleDifferentialCrossSection(std::forward<ArgTypes>(args)...);};
+    double operator()(ArgTypes&&... args) const { return SingleDifferentialCrossSection(std::forward<ArgTypes>(args)...);};
 };
 
 } // close I3PGE namespace

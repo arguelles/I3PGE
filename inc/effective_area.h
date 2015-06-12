@@ -22,7 +22,7 @@ struct MuonEffectiveAreaSpline {
     double Evaluate(double costh,double muon_energy) const;
   public:
     template<typename... ArgTypes>
-    double operator()(ArgTypes&&... args){ return Evaluate(std::forward<ArgTypes>(args)...);};
+    double operator()(ArgTypes&&... args) const { return Evaluate(std::forward<ArgTypes>(args)...);};
     MuonEffectiveAreaSpline(std::string splinepath);
 };
 

@@ -264,6 +264,175 @@ double KernelHelper(double *x, size_t dim, void *params){
     return ICE->Kernel(x);
 };
 
+template<typename DataType>
+void ChangeParameters(AtmNeutrinoState* ANS,std::vector<DataType> params){
+    double N0 = params[0];
+    double dgamma = params[1];
+
+    std::vector<NeutrinoState> NST = ANS->GetState();
+
+    // mean energy for atmospheric in 1e2 to 1e6 range
+    double Emean_GeV = 1827.03;
+
+    for(int it = 0; it < ANS->cth_size; it++){
+        for(int ie = 0 ; ie < ANS->e_size; ie++){
+            double E_GeV = exp(ANS->loge_range[ie])/1.0e9;
+            NST[it].InitialNeutrinoState[ie] = NST[it].InitialNeutrinoState[ie]*(pow(E_GeV/Emean_GeV,dgamma)*N0);
+            NST[it].InitialANeutrinoState[ie] = NST[it].InitialANeutrinoState[ie]*(pow(E_GeV/Emean_GeV,dgamma)*N0);
+        }
+    }
+
+    ANS->SetState(NST);
+}
+
+
+template<typename DataType>
+DataType CalculateVerosimilitud(Table obs_events, std::vector<std::vector<DataType>> sim_events, std::vector<DataType> params, std::vector<Prior*> priors){
+    if (obs_events.size() != sim_events.size()){
+        std::cout << "Error : Different obs/sim number" << std::endl;
+        exit(0);
+    }
+
+    vector<double> obs;
+    vector<DataType> sim;
+
+    for(int it = 0; it < (int) obs_events.size(); it++){
+        for(int ei = 0; ei < (int) obs_events[0].size(); ei++){
+            if ( sim_events[it][ei] != DataType(0) ){
+                obs.push_back(obs_events[it][ei]);
+                sim.push_back(sim_events[it][ei]);
+            }
+        }
+    }
+
+    double f = 0.15;
+    Verosimilitud<DataType> Verdad(obs,sim,priors,2,f);
+    return Verdad.EvaluateVerosimilitud(params);
+}
+
+class VerosimilitudMinuitAdapter : public ROOT::Minuit2::FCNBase {
+private:
+    Table obs;
+    //Table sim;
+    AtmNeutrinoState ANS;
+    vector<Prior*> priors;
+    vector<double> params;
+    IceCubeEstimator* ICE;
+
+public:
+    VerosimilitudMinuitAdapter(Table obs,
+                               AtmNeutrinoState ANS,
+                               vector<Prior*> priors,
+                               IceCubeEstimator* ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
+
+    double Evaluate(const std::vector<double>& params) const {
+        //cout << "Evaluating coso" << endl;
+        AtmNeutrinoState* ANF_TMP = new AtmNeutrinoState(ANS);
+        ChangeParameters(ANF_TMP,params);
+        //cout << "runeval2" << endl;
+        Table sim = ICE->DoIt(ANF_TMP,0);
+
+        //PrintTable(sim);
+
+        delete ANF_TMP;
+        ANF_TMP = NULL;
+        //cout << "runeval3" << endl;
+        double ver = CalculateVerosimilitud(obs,sim,params,priors);
+        //cout << params[0] << " " << params[1] << " " << ver << endl;
+        return ver;
+        //return CalculateVerosimilitud(obs,sim,params,priors);
+    }
+
+    double operator()(const std::vector<double>& params) const{
+        return (Evaluate(params));
+    }
+
+    double Up() const{
+        return 0.5;
+    }
+
+};
+
+class VerosimilitudBFGSAdapter : public BFGS_FunctionBase {
+private:
+    Table obs;
+    AtmNeutrinoState ANS;
+    vector<Prior*> priors;
+    vector<double> params;
+    IceCubeEstimator* ICE;
+    static constexpr int DerivativeDimension = Dynamic;
+    template<typename DataType>
+    std::vector<std::vector<DataType>> ChangeParameters(Table sim,std::vector<DataType> params){
+      DataType N0 = params[0];
+      DataType dgamma = params[1];
+
+      std::cout << N0 << " " << dgamma << std::endl;
+
+      // mean energy for atmospheric in 1e2 to 1e6 range
+      double Emean_GeV = 1827.03;
+      std::vector<std::vector<DataType>> ch_sim;
+      for(int it = 0; it < ICE->cth_size; it++){
+          std::vector<DataType> row_sim;
+          for(int ie = 0 ; ie < ICE->e_size; ie++){
+              double E_GeV = exp(ICE->loge_range[ie])/1.0e9;
+              row_sim.push_back(N0*pow(E_GeV/Emean_GeV,dgamma)*sim[it][ie]);
+              //std::cout << N0*pow(E_GeV/Emean_GeV,dgamma)*sim[it][ie] << std::endl;
+          }
+          ch_sim.push_back(row_sim);
+      }
+      return ch_sim;
+    }
+public:
+    VerosimilitudBFGSAdapter(Table obs,
+                             AtmNeutrinoState ANS,
+                             vector<Prior*> priors,
+                             IceCubeEstimator* ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
+
+    template<typename DataType>
+    DataType evalF(std::vector<DataType> params){
+        Table sim = ICE->DoIt(&ANS,0);
+        vector<vector<DataType>> ch_sim = ChangeParameters(sim,params);
+        /*
+        for( unsigned int i = 0; i < ch_sim.size(); i++)
+            for( unsigned int j = 0; j < ch_sim[i].size(); j++)
+                std::cout << ch_sim[i][j] << " ";
+            std::cout << std::endl;
+        */
+        DataType ver = CalculateVerosimilitud(obs,ch_sim,params,priors);
+        std::cout << "ver " << ver << std::endl;
+        return ver;
+    }
+
+    double evalF(std::vector<double> params){
+        Table sim = ICE->DoIt(&ANS,0);
+        vector<vector<double>> ch_sim = ChangeParameters(sim,params);
+
+        double ver = CalculateVerosimilitud(obs,ch_sim,params,priors);
+        return ver;
+    }
+
+    template<typename DataType>
+    DataType operator()(const std::vector<DataType> params){
+        return (evalF(params));
+    }
+
+    std::pair<double,std::vector<double>> evalFG(std::vector<double> x){
+        const size_t size=x.size();
+        std::vector<FD<DerivativeDimension>> params(size);
+        for(size_t i=0; i<size; i++)
+            params[i]=FD<DerivativeDimension>(x[i],i);
+
+        FD<DerivativeDimension> result=evalF<FD<DerivativeDimension>>(params);
+
+        std::vector<double> grad(size);
+        for(unsigned int i=0; i<size; i++)
+          grad[i]=result.derivative(i);
+
+        return(std::make_pair(result.value(),grad));
+    }
+
+};
+
 } // close namespace
 
 #endif
