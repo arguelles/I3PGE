@@ -9,7 +9,7 @@
 #include <vector>
 #include <photospline/splinetable.h>
 #include <photospline/bspline.h>
-#include <SQuIDS/Const.h>
+#include <SQuIDS/const.h>
 #include <nuSQuIDS/marray.h>
 #include <nuSQuIDS/tools.h>
 

@@ -16,6 +16,7 @@
 #include "xs.h"
 #include "muon_energy_loss.h"
 #include "effective_area.h"
+#include "verosimilitud.h"
 
 #define _IC_AEFF_COSTHBINS_ 11
 #define _IC_AEFF_EBINS_ 50
@@ -264,8 +265,9 @@ double KernelHelper(double *x, size_t dim, void *params){
     return ICE->Kernel(x);
 };
 
+/*
 template<typename DataType>
-void ChangeParameters(AtmNeutrinoState* ANS,std::vector<DataType> params){
+void ChangeParameters(std::vector<Flux> FLUX,std::vector<DataType> params){
     double N0 = params[0];
     double dgamma = params[1];
 
@@ -284,17 +286,19 @@ void ChangeParameters(AtmNeutrinoState* ANS,std::vector<DataType> params){
 
     ANS->SetState(NST);
 }
-
+*/
 
 template<typename DataType>
-DataType CalculateVerosimilitud(Table obs_events, std::vector<std::vector<DataType>> sim_events, std::vector<DataType> params, std::vector<Prior*> priors){
+DataType CalculateVerosimilitud(nusquids::marray<double,2> obs_events,
+    nusquids::marray<DataType,2> sim_events,
+    std::vector<DataType> params, std::vector<Prior*> priors){
     if (obs_events.size() != sim_events.size()){
         std::cout << "Error : Different obs/sim number" << std::endl;
         exit(0);
     }
 
-    vector<double> obs;
-    vector<DataType> sim;
+    std::vector<double> obs;
+    std::vector<DataType> sim;
 
     for(int it = 0; it < (int) obs_events.size(); it++){
         for(int ei = 0; ei < (int) obs_events[0].size(); ei++){
@@ -312,25 +316,25 @@ DataType CalculateVerosimilitud(Table obs_events, std::vector<std::vector<DataTy
 
 class VerosimilitudMinuitAdapter : public ROOT::Minuit2::FCNBase {
 private:
-    Table obs;
-    //Table sim;
-    AtmNeutrinoState ANS;
-    vector<Prior*> priors;
-    vector<double> params;
-    IceCubeEstimator* ICE;
+    nusquids::marray<double,2> obs;
+    //nusquids::marray<double,2> sim;
+    std::shared_ptr<Flux> FLUX;
+    std::vector<std::shared_ptr<Prior>> priors;
+    std::vector<double> params;
+    std::shared_ptr<IceCubeEstimator> ICE;
 
 public:
-    VerosimilitudMinuitAdapter(Table obs,
+    VerosimilitudMinuitAdapter(nusquids::marray<double,2> obs,
                                AtmNeutrinoState ANS,
-                               vector<Prior*> priors,
-                               IceCubeEstimator* ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
+                               std::vector<std::shared_ptr<Prior>> priors,
+                               std::shared_ptr<IceCubeEstimator> ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
 
     double Evaluate(const std::vector<double>& params) const {
         //cout << "Evaluating coso" << endl;
         AtmNeutrinoState* ANF_TMP = new AtmNeutrinoState(ANS);
         ChangeParameters(ANF_TMP,params);
         //cout << "runeval2" << endl;
-        Table sim = ICE->DoIt(ANF_TMP,0);
+        nusquids::marray<double,2> sim = ICE->DoIt(ANF_TMP,0);
 
         //PrintTable(sim);
 
@@ -355,14 +359,14 @@ public:
 
 class VerosimilitudBFGSAdapter : public BFGS_FunctionBase {
 private:
-    Table obs;
+    nusquids::marray<double,2> obs;
     AtmNeutrinoState ANS;
-    vector<Prior*> priors;
-    vector<double> params;
-    IceCubeEstimator* ICE;
+    std::vector<std::shared_ptr<Prior>> priors;
+    std::vector<double> params;
+    std::shared_ptr<IceCubeEstimator> ICE;
     static constexpr int DerivativeDimension = Dynamic;
     template<typename DataType>
-    std::vector<std::vector<DataType>> ChangeParameters(Table sim,std::vector<DataType> params){
+    nusquids::marray<DataType,2> ChangeParameters(nusquids::marray<DataType,2> sim,std::vector<DataType> params){
       DataType N0 = params[0];
       DataType dgamma = params[1];
 
@@ -383,31 +387,23 @@ private:
       return ch_sim;
     }
 public:
-    VerosimilitudBFGSAdapter(Table obs,
-                             AtmNeutrinoState ANS,
-                             vector<Prior*> priors,
-                             IceCubeEstimator* ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
+    VerosimilitudBFGSAdapter(nusquids::marray<double,2> obs,
+                             std::shared_ptr<Flux> FLUX,
+                             std::vector<std::shared_ptr<Prior>> priors,
+                             std::shared_ptr<IceCubeEstimator> ICE): obs(obs),ANS(ANS),priors(priors),ICE(ICE){};
 
     template<typename DataType>
     DataType evalF(std::vector<DataType> params){
-        Table sim = ICE->DoIt(&ANS,0);
-        vector<vector<DataType>> ch_sim = ChangeParameters(sim,params);
-        /*
-        for( unsigned int i = 0; i < ch_sim.size(); i++)
-            for( unsigned int j = 0; j < ch_sim[i].size(); j++)
-                std::cout << ch_sim[i][j] << " ";
-            std::cout << std::endl;
-        */
-        DataType ver = CalculateVerosimilitud(obs,ch_sim,params,priors);
-        std::cout << "ver " << ver << std::endl;
+        nusquids::marray<DataType,2> sim = ICE->DoIt(&ANS,0);
+        //nusquids::marray<DataType,2> ch_sim = ChangeParameters(sim,params);
+        DataType ver = CalculateVerosimilitud(obs,sim,params,priors);
         return ver;
     }
 
     double evalF(std::vector<double> params){
-        Table sim = ICE->DoIt(&ANS,0);
-        vector<vector<double>> ch_sim = ChangeParameters(sim,params);
-
-        double ver = CalculateVerosimilitud(obs,ch_sim,params,priors);
+        nusquids::marray<double,2> sim = ICE->DoIt(&ANS,0);
+        //vector<vector<double>> ch_sim = ChangeParameters(sim,params);
+        double ver = CalculateVerosimilitud(obs,sim,params,priors);
         return ver;
     }
 
